@@ -1,54 +1,30 @@
 import { NextResponse } from "next/server";
-import bcrypt from "bcryptjs";
-import pool from "@/lib/db";
-import { cookies } from 'next/headers';
+import db from "@/lib/db";
 
 export async function POST(request: Request) {
   try {
     const { email, password } = await request.json();
 
-    // Buscar usuário
-    const [users] = await pool.execute(
-      'SELECT * FROM users WHERE email = ?',
-      [email]
-    );
+    const query = `
+      SELECT id, name, email 
+      FROM users 
+      WHERE email = ? AND password = ?
+    `;
 
-    const user = (users as any[])[0];
+    const [users] = await db.execute<any[]>(query, [email, password]);
+    const user = users[0];
 
     if (!user) {
       return NextResponse.json(
-        { error: "User not found" },
-        { status: 404 }
-      );
-    }
-
-    // Verificar senha
-    const passwordMatch = await bcrypt.compare(password, user.password);
-
-    if (!passwordMatch) {
-      return NextResponse.json(
-        { error: "Invalid password" },
+        { error: "Email ou senha inválidos" },
         { status: 401 }
       );
     }
 
-    // Definir cookie de sessão
-    cookies().set('session', user.id.toString(), {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 1 week
-    });
-
-    // Remover a senha do objeto retornado
-    const { password: _, ...userWithoutPassword } = user;
-
-    return NextResponse.json(userWithoutPassword);
+    return NextResponse.json(user);
   } catch (error) {
-    console.error("Login error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Erro ao fazer login" },
       { status: 500 }
     );
   }

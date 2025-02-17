@@ -1,38 +1,5 @@
 -- CRUD Operations for Wishlist System
 
--- ================ USERS CRUD ================
-
--- Create User
-INSERT INTO users (name, email, password_hash) 
-VALUES (?, ?, ?);
-
--- Create User Profile
-INSERT INTO user_profile (user_id, avatar_url, bio, birth_date) 
-VALUES (?, ?, ?, ?);
-
--- Read User
-SELECT u.*, up.avatar_url, up.bio, up.birth_date 
-FROM users u
-LEFT JOIN user_profile up ON u.id = up.user_id
-WHERE u.id = ?;
-
--- Update User
-UPDATE users 
-SET name = ?, 
-    email = ?, 
-    password_hash = ?
-WHERE id = ?;
-
--- Update User Profile
-UPDATE user_profile 
-SET avatar_url = ?, 
-    bio = ?, 
-    birth_date = ?
-WHERE user_id = ?;
-
--- Delete User (will cascade to profile and wishlist items)
-DELETE FROM users WHERE id = ?;
-
 -- ================ WISHLIST ITEMS CRUD ================
 
 -- Create Wishlist Item
@@ -122,32 +89,6 @@ WHERE id = ?;
 -- Delete Category (will fail if category is in use)
 DELETE FROM categories WHERE id = ?;
 
--- ================ ITEM SHARING CRUD ================
-
--- Share Item with User
-INSERT INTO item_sharing (user_id, item_id, permission_type, granted_by, expires_at) 
-VALUES (?, ?, ?, ?, ?);
-
--- Read Item Sharing Permissions
-SELECT 
-    is.*,
-    u.name as shared_with_user,
-    gb.name as granted_by_user
-FROM item_sharing is
-JOIN users u ON is.user_id = u.id
-JOIN users gb ON is.granted_by = gb.id
-WHERE is.item_id = ?;
-
--- Update Sharing Permission
-UPDATE item_sharing 
-SET permission_type = ?, 
-    expires_at = ?
-WHERE user_id = ? AND item_id = ? AND permission_type = ?;
-
--- Remove Sharing Permission
-DELETE FROM item_sharing 
-WHERE user_id = ? AND item_id = ? AND permission_type = ?;
-
 -- ================ USEFUL QUERIES ================
 
 -- Get User's Wishlist Summary
@@ -161,15 +102,35 @@ FROM wishlist_items wi
 JOIN purchase_status ps ON wi.purchase_status_id = ps.id
 WHERE wi.user_id = ?;
 
--- Get Items Shared with User
+-- ================ ITEM NOTES CRUD ================
+
+-- Create Note
+INSERT INTO item_notes (user_id, item_id, note) 
+VALUES (?, ?, ?);
+
+-- Read Notes for Item
 SELECT 
-    wi.*,
-    c.name as category_name,
-    u.name as owner_name,
-    GROUP_CONCAT(is.permission_type) as permissions
-FROM item_sharing is
-JOIN wishlist_items wi ON is.item_id = wi.id
-JOIN categories c ON wi.category_id = c.id
-JOIN users u ON wi.user_id = u.id
-WHERE is.user_id = ? AND (is.expires_at IS NULL OR is.expires_at > CURRENT_TIMESTAMP)
-GROUP BY wi.id;
+    n.*,
+    u.name as user_name
+FROM item_notes n
+JOIN users u ON n.user_id = u.id
+WHERE n.item_id = ?
+ORDER BY n.created_at DESC;
+
+-- Read Notes by User
+SELECT 
+    n.*,
+    wi.title as item_title
+FROM item_notes n
+JOIN wishlist_items wi ON n.item_id = wi.id
+WHERE n.user_id = ?
+ORDER BY n.created_at DESC;
+
+-- Update Note
+UPDATE item_notes 
+SET note = ?
+WHERE id = ? AND user_id = ?;
+
+-- Delete Note
+DELETE FROM item_notes 
+WHERE id = ? AND user_id = ?;

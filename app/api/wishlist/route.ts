@@ -1,79 +1,203 @@
 import { NextResponse } from "next/server";
-import pool from "@/lib/db";
+import db from "@/lib/db";
 
-// Obter todos os itens da wishlist
-export async function GET() {
+// Criar item
+export async function POST(request: Request) {
   try {
-    const [items]: [any[], any] = await pool.execute(
-      `SELECT w.*, 
-              c.name as category_name, 
-              c.icon as category_icon,
-              ps.name as status_name,
-              u.name as purchased_by_name
-       FROM wishlist_items w 
-       JOIN categories c ON w.category_id = c.id 
-       JOIN purchase_status ps ON w.purchase_status_id = ps.id
-       LEFT JOIN users u ON w.purchased_by = u.id
-       ORDER BY w.created_at DESC`
-    );
+    const body = await request.json();
+    console.log('Dados recebidos:', body); // Debug
 
-    return NextResponse.json(items);
+    const {
+      title,
+      description,
+      price,
+      category_id,
+      priority,
+      image_url,
+      user_id,
+      purchase_status_id
+    } = body;
+
+    const query = `
+      INSERT INTO wishlist_items (
+        title, description, price, category_id, 
+        priority, image_url, user_id, purchase_status_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      title,
+      description || null,
+      price || null,
+      category_id,
+      priority || 'medium',
+      image_url || null,
+      user_id,
+      purchase_status_id || 1
+    ];
+
+    const [result] = await db.execute(query, values);
+    console.log('Resultado da inserção:', result); // Debug
+    
+    return NextResponse.json({ 
+      message: "Item adicionado com sucesso",
+      result 
+    });
+
   } catch (error) {
-    console.error("Error fetching wishlist items:", error);
+    console.error('Erro ao criar item:', error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Erro ao criar item" },
       { status: 500 }
     );
   }
 }
 
-// Adicionar novo item à wishlist
-export async function POST(request: Request) {
+// Buscar itens
+export async function GET(request: Request) {
   try {
-    const data = await request.json();
+    const { searchParams } = new URL(request.url);
+    const user_id = searchParams.get('user_id');
+
+    console.log('Buscando itens para user_id:', user_id);
+
+    if (!user_id) {
+      return NextResponse.json(
+        { error: "ID do usuário é necessário" },
+        { status: 400 }
+      );
+    }
+
+    const query = `
+      SELECT 
+        wi.*,
+        c.name as category_name,
+        ps.name as status_name
+      FROM wishlist_items wi
+      LEFT JOIN categories c ON wi.category_id = c.id
+      LEFT JOIN purchase_status ps ON wi.purchase_status_id = ps.id
+      WHERE wi.user_id = ?
+      ORDER BY wi.created_at DESC
+    `;
+
+    const [items] = await db.execute<any[]>(query, [user_id]);
+    console.log('Itens encontrados:', items);
+
+    return NextResponse.json(items);
+
+  } catch (error) {
+    console.error('Erro ao buscar itens:', error);
+    return NextResponse.json(
+      { error: "Erro ao buscar itens" },
+      { status: 500 }
+    );
+  }
+}
+
+// Atualizar item
+export async function PUT(request: Request) {
+  try {
     const { 
+      id,
+      user_id,
+      category_id, 
+      purchase_status_id, 
       title, 
       description, 
       price, 
-      category_id, 
-      priority,
+      priority, 
       url, 
       image_url 
-    } = data;
+    } = await request.json();
 
-    // Obter o ID do status "Não Comprado"
-    const [notPurchasedStatus]: [any[], any] = await pool.execute(
-      'SELECT id FROM purchase_status WHERE name = ?',
-      ['Não Comprado']
-    );
-    const purchaseStatusId = (notPurchasedStatus[0] as any)[0].id;
+    const query = `
+      UPDATE wishlist_items 
+      SET category_id = ?,
+          purchase_status_id = ?,
+          title = ?,
+          description = ?,
+          price = ?,
+          priority = ?,
+          url = ?,
+          image_url = ?
+      WHERE id = ? AND user_id = ?
+    `;
 
-    const [result]: [any[], any] = await pool.execute(
-      `INSERT INTO wishlist_items 
-       (category_id, purchase_status_id, title, description, 
-        price, priority, url, image_url) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [category_id, purchaseStatusId, title, description, 
-       price, priority, url, image_url]
-    );
+    await db.execute(query, [
+      category_id, purchase_status_id, title,
+      description, price, priority, url, image_url,
+      id, user_id
+    ]);
+    
+    return NextResponse.json({ 
+      message: 'Item atualizado com sucesso' 
+    });
 
-    const [items]: [any[], any] = await pool.execute(
-      `SELECT w.*, 
-              c.name as category_name, 
-              c.icon as category_icon,
-              ps.name as status_name
-       FROM wishlist_items w 
-       JOIN categories c ON w.category_id = c.id 
-       JOIN purchase_status ps ON w.purchase_status_id = ps.id
-       WHERE w.id = ?`,
-      [(result[0] as any).insertId]
-    );
-
-    return NextResponse.json(items[0]);
   } catch (error) {
-    console.error("Error adding wishlist item:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Erro ao atualizar item" },
+      { status: 500 }
+    );
+  }
+}
+
+// Marcar como comprado
+export async function PATCH(request: Request) {
+  try {
+    const { id, purchase_price, purchased_by } = await request.json();
+
+    const query = `
+      UPDATE wishlist_items 
+      SET purchase_status_id = (SELECT id FROM purchase_status WHERE name = 'Comprado'),
+          purchase_date = CURRENT_DATE,
+          purchase_price = ?,
+          purchased_by = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `;
+
+    await db.execute(query, [purchase_price, purchased_by, id]);
+    
+    return NextResponse.json({ 
+      message: 'Item marcado como comprado' 
+    });
+
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Erro ao marcar item como comprado" },
+      { status: 500 }
+    );
+  }
+}
+
+// Deletar item
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get('id');
+    const user_id = searchParams.get('user_id');
+
+    if (!id || !user_id) {
+      return NextResponse.json(
+        { error: "ID do item e ID do usuário são necessários" },
+        { status: 400 }
+      );
+    }
+
+    const query = `
+      DELETE FROM wishlist_items 
+      WHERE id = ? AND user_id = ?
+    `;
+
+    await db.execute(query, [id, user_id]);
+    
+    return NextResponse.json({ 
+      message: 'Item deletado com sucesso' 
+    });
+
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Erro ao deletar item" },
       { status: 500 }
     );
   }

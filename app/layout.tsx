@@ -3,6 +3,7 @@ import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import { Providers } from "./providers"
 import type React from "react" // Added import for React
+import { CategoryProvider } from './contexts/CategoryContext'
 
 const inter = Inter({ subsets: ["latin"] })
 
@@ -20,7 +21,11 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
-        <Providers>{children}</Providers>
+        <CategoryProvider>
+          <Providers>
+            {children}
+          </Providers>
+        </CategoryProvider>
       </body>
     </html>
   )
