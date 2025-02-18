@@ -66,18 +66,19 @@ export default function WishlistItems({ userId }: WishlistItemsProps) {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  const markAsPurchased = async (itemId: number, price: string | number) => {
+  const markAsPurchased = async (itemId: number, price: number) => {
     try {
-      const purchasePrice = typeof price === 'string' ? parseFloat(price) : price;
-      
-      const response = await fetch('/api/wishlist', {
-        method: 'PATCH',
+      const response = await fetch('/api/purchase-status/update', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: itemId,
-          purchase_price: purchasePrice,
-          purchased_by: userId
-        }),
+          item_id: itemId,
+          status_id: 2, // ID do status 'Comprado'
+          user_id: userId,
+          purchase_price: price,
+          purchased_by: userId,
+          notes: 'Item marcado como comprado'
+        })
       });
 
       if (response.ok) {
@@ -85,6 +86,29 @@ export default function WishlistItems({ userId }: WishlistItemsProps) {
       }
     } catch (error) {
       console.error('Erro ao marcar como comprado:', error);
+    }
+  };
+
+  const markAsNotPurchased = async (itemId: number) => {
+    try {
+      const response = await fetch('/api/purchase-status/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          item_id: itemId,
+          status_id: 1, // ID do status 'Não Comprado'
+          user_id: userId,
+          purchase_price: null,
+          purchased_by: null,
+          notes: 'Item marcado como não comprado'
+        })
+      });
+
+      if (response.ok) {
+        fetchItems();
+      }
+    } catch (error) {
+      console.error('Erro ao marcar como não comprado:', error);
     }
   };
 
@@ -183,7 +207,7 @@ export default function WishlistItems({ userId }: WishlistItemsProps) {
                 </button>
                 {item.status_name !== 'Comprado' && (
                   <button
-                    onClick={() => markAsPurchased(item.id, item.price)}
+                    onClick={() => markAsPurchased(item.id, typeof item.price === 'string' ? parseFloat(item.price) : item.price)}
                     className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600"
                   >
                     Marcar como Comprado
@@ -210,6 +234,15 @@ export default function WishlistItems({ userId }: WishlistItemsProps) {
                 }</p>
                 {item.purchased_by_name && <p>Comprado por: {item.purchased_by_name}</p>}
               </div>
+            )}
+
+            {item.status_name === 'Comprado' && (
+              <button
+                onClick={() => markAsNotPurchased(item.id)}
+                className="px-3 py-1 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+              >
+                Desfazer Compra
+              </button>
             )}
           </div>
         ))}

@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus } from "lucide-react"
+import { BarChart2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AddItemDialog } from "@/app/components/AddItemDialog"
 import WishlistItems from "@/app/components/WishlistItems"
+import NavBar from "@/app/components/NavBar"
 
 interface WishlistItem {
   id: number
@@ -49,11 +50,7 @@ export default function WishlistPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Minha Wishlist</h1>
-        <AddItemDialog onItemAdded={fetchItems} />
-      </div>
-
+      <NavBar />
       <WishlistItems userId={1} />
     </div>
   );
