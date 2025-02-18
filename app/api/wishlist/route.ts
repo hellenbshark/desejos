@@ -1,53 +1,61 @@
 import { NextResponse } from "next/server";
 import db from "@/lib/db";
 
-// Criar item
+// Criar item(s)
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    console.log('Dados recebidos:', body); // Debug
+    
+    // Verifica se é um único item ou array de itens
+    const items = Array.isArray(body) ? body : [body];
+    console.log('Dados recebidos:', items);
 
-    const {
-      title,
-      description,
-      price,
-      category_id,
-      priority,
-      image_url,
-      user_id,
-      purchase_status_id
-    } = body;
+    // Validar itens
+    for (const item of items) {
+      if (!item.title || !item.category_id || !item.user_id) {
+        return NextResponse.json(
+          { error: "Título, categoria e usuário são obrigatórios" },
+          { status: 400 }
+        );
+      }
+    }
 
+    // Query para inserção em massa
+    const placeholders = items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
     const query = `
       INSERT INTO wishlist_items (
         title, description, price, category_id, 
         priority, image_url, user_id, purchase_status_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES ${placeholders}
     `;
 
-    const values = [
-      title,
-      description || null,
-      price || null,
-      category_id,
-      priority || 'medium',
-      image_url || null,
-      user_id,
-      purchase_status_id || 1
-    ];
+    // Preparar valores para inserção em massa
+    const values = items.flatMap(item => [
+      item.title,
+      item.description || null,
+      item.price || null,
+      item.category_id,
+      item.priority || 'medium',
+      item.image_url || null,
+      item.user_id,
+      item.purchase_status_id || 1
+    ]);
 
+    // Executar inserção em massa
     const [result] = await db.execute(query, values);
-    console.log('Resultado da inserção:', result); // Debug
     
     return NextResponse.json({ 
-      message: "Item adicionado com sucesso",
-      result 
+      message: `${items.length} item(s) adicionado(s) com sucesso`,
+      result,
+      insertedIds: (result as any).insertId 
+        ? Array.from({ length: items.length }, (_, i) => (result as any).insertId + i)
+        : []
     });
 
   } catch (error) {
-    console.error('Erro ao criar item:', error);
+    console.error('Erro ao criar item(s):', error);
     return NextResponse.json(
-      { error: "Erro ao criar item" },
+      { error: "Erro ao criar item(s)" },
       { status: 500 }
     );
   }
@@ -58,8 +66,7 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const user_id = searchParams.get('user_id');
-
-    console.log('Buscando itens para user_id:', user_id);
+    const search = searchParams.get('search')?.trim();
 
     if (!user_id) {
       return NextResponse.json(
@@ -68,21 +75,43 @@ export async function GET(request: Request) {
       );
     }
 
-    const query = `
+    let query = `
       SELECT 
         wi.*,
         c.name as category_name,
-        ps.name as status_name
+        c.icon as category_icon,
+        ps.name as status_name,
+        u.name as purchased_by_name
       FROM wishlist_items wi
       LEFT JOIN categories c ON wi.category_id = c.id
       LEFT JOIN purchase_status ps ON wi.purchase_status_id = ps.id
+      LEFT JOIN users u ON wi.purchased_by = u.id
       WHERE wi.user_id = ?
-      ORDER BY wi.created_at DESC
     `;
 
-    const [items] = await db.execute<any[]>(query, [user_id]);
-    console.log('Itens encontrados:', items);
+    const queryParams = [user_id];
 
+    if (search) {
+      // Busca por palavras-chave separadas
+      const keywords = search.split(' ').filter(Boolean);
+      const searchConditions = keywords.map(() => 
+        `(LOWER(wi.title) LIKE LOWER(?) OR LOWER(wi.description) LIKE LOWER(?))`
+      ).join(' AND ');
+      
+      query += ` AND (${searchConditions})`;
+      
+      // Adiciona cada palavra-chave duas vezes (para título e descrição)
+      keywords.forEach(keyword => {
+        queryParams.push(`%${keyword}%`, `%${keyword}%`);
+      });
+    }
+
+    query += ` ORDER BY 
+      CASE WHEN ps.name = 'Comprado' THEN 1 ELSE 0 END,
+      wi.created_at DESC
+    `;
+
+    const [items] = await db.execute<any[]>(query, queryParams);
     return NextResponse.json(items);
 
   } catch (error) {
@@ -105,7 +134,7 @@ export async function PUT(request: Request) {
       title, 
       description, 
       price, 
-      priority, 
+      priority,
       url, 
       image_url 
     } = await request.json();
